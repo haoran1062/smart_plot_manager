@@ -7,6 +7,8 @@ import os, psutil, subprocess, shutil, time, datetime
 console = Console()
 
 def count_time_format(minuate):
+    if isinstance(minuate, str):
+        return minuate
     return time.strftime("%H:%M:%S", time.gmtime(minuate))
 
 def time_format(timestep):
@@ -25,7 +27,7 @@ class DISK(object):
         self.disk_type = judge_disk_type(self.device)
         self.occupy_list = []
         self.get_max_plot_size()
-        self.show_disk_info()
+        # self.show_disk_info()
         
         
     def get_free_size(self):
@@ -125,6 +127,9 @@ class CPUManager(object):
         # elif plot_worker.logger.get_percent_step()[1] != 1:
         #     self.used_num -= plot_worker.thread_number - 1
         #     self.used_num = max(self.used_num, 0)
+    
+    def view_info(self):
+        print(f'当前CPU核心数: {self.thread_num},最大可用数量: {self.max_thread_num},已使用数量: {self.used_num}')
 
 class SSDManager(object):
     # 固态硬盘管理者 获取固态硬盘列表，每块SSD的大小，占用率，以及管理P盘时SSD调度
@@ -133,7 +138,7 @@ class SSDManager(object):
         self.disk_dict = {}
         
         for now_path in self.ssd_list:
-            self.disk_dict[now_path] = DISK(now_path)
+            self.disk_dict[now_path.mountpoint] = DISK(now_path)
 
     def auto_get_ssd_list(self, ssd_path_list=None, min_size=240):
         self.ssd_list = []
@@ -161,12 +166,16 @@ class SSDManager(object):
                         max_internal_time = now_internal_time
                         out_path = path
         if not out_path:
-            print(u'[red]P盘空间不足！')
+            print(u'[red]SSD的P盘空间不足！')
         else:
+            print(out_path, worker_name)
             self.disk_dict[out_path].occupy_list.append([worker_name, time.time()])
             out_path = out_path + f'/{worker_name}/'
-            if not os.path.exists(out_path):
-                os.makedirs(out_path)
+            if os.path.exists(out_path):
+                print(f'[red]路径{out_path}已存在 删除并重新创建！')
+                shutil.rmtree(out_path)
+            
+            os.makedirs(out_path)
 
         return out_path
     
@@ -194,6 +203,13 @@ class SSDManager(object):
         for k, v in self.disk_dict.items():
             n += v.get_max_plot_size()
         return n
+    
+    def get_total_ssd_status(self):
+        used, total = 0, 0
+        for path, disk in self.disk_dict.items():
+            used += disk.get_used_size()
+            total += disk.get_total_size()
+        return used, total
 
     def view_info(self):
         table = Table(show_header=True, header_style="bold magenta")
@@ -225,7 +241,7 @@ class HDDManager(object):
         self.disk_dict = {}
         
         for now_path in self.hdd_list:
-            self.disk_dict[now_path] = DISK(now_path)
+            self.disk_dict[now_path.mountpoint] = DISK(now_path)
 
     def auto_get_hdd_list(self, hdd_path_list=None):
         self.hdd_list = []
@@ -238,6 +254,7 @@ class HDDManager(object):
                     self.hdd_list.append(now_disk[-1])
 
     def set_hdd_occupy(self, worker_name, delay_minute):
+        delay_minute *= 60
         max_internal_time = 0
         out_path = ''
         for path, disk in self.disk_dict.items():
@@ -253,7 +270,10 @@ class HDDManager(object):
                         max_internal_time = now_internal_time
                         out_path = path
         if not out_path:
-            print(u'[red]P盘空间不足！')
+            if max_internal_time < delay_minute:
+                print(f'[red]当前机械盘执行任务距离上次任务时间间隔 {max_internal_time}分钟 小于 {delay_minute//60}分钟! 无法继续申请，等待{delay_minute//60 - max_internal_time}分钟后再尝试')
+            else:
+                print(u'[red]P盘空间不足！')
         else:
             self.disk_dict[out_path].occupy_list.append([worker_name, time.time()])
 
@@ -262,13 +282,20 @@ class HDDManager(object):
     def get_hdd_max_plot_number(self, disk_path, k=32):
         assert k==32, print(u'暂时只支持k32!')
         assert disk_path in self.disk_dict, print(f'{disk_path} 没有出现在 {self.disk_dict} 中！')
-        return self.disk_dict[disk_path].get_max_plot_size()
+        return self.disk_dict[disk_path].get_max_farm_size()
 
     def get_all_max_plot_number(self, k=32):
         n = 0
         for k, v in self.disk_dict.items():
-            n += v.get_max_plot_size()
+            n += v.get_max_farm_size()
         return n
+
+    def get_total_hdd_status(self):
+        used, total = 0, 0
+        for path, disk in self.disk_dict.items():
+            used += disk.get_used_size()
+            total += disk.get_total_size()
+        return used, total
 
     def view_info(self):
         table = Table(show_header=True, header_style="bold magenta")
@@ -319,7 +346,8 @@ class LogProcesser(object):
         return time.time() - self.start_time
 
     def get_remaining_time(self, endurance_time, percent):
-        remaining_time = (endurance_time / percent) * (1 - percent)
+
+        remaining_time = '--:--:--' if percent < 0.01 else (endurance_time / percent) * (1 - percent)
         return remaining_time
 
     def get_percent_step(self):
@@ -339,9 +367,6 @@ class LogProcesser(object):
             step = 4
         return percent, step
 
-    def view_info(self):
-        pass
-
 class PlotWorker(object):
     # 每个plot程序的worker
     def __init__(self, id, cpu_man, config, plot_bpath, farm_bpath):
@@ -355,6 +380,7 @@ class PlotWorker(object):
         self.bucket = config.bucket
         self.start_time = time.time()
         self.thread_number = config.thread_number
+        self.config = config
         cpu_man.set_cpu_occupy(self)
         self.log_file = config.log_path + f'plot_{self.id}.log'
         if not os.path.exists(config.log_path):
@@ -369,32 +395,38 @@ class PlotWorker(object):
     def get_info(self):
         endurance_time = self.logger.get_endurance_time()
         percent, step = self.get_status()
+        iter = self.logger.get_iter()
         endurance_time_str = count_time_format(endurance_time)
         remaining_time_str = count_time_format(self.logger.get_remaining_time(endurance_time, percent))
-        # 任务名，pid，占用的cpu核心，内存占用，开始时间，持续时间，未来用时，目前阶段，plot缓存路径，输出路径
-        info_list = [self.name, str(self.pid), ', '.join([str(i) for i in self.cpu_list]), str(self.memory_occupy), time_format(self.start_time), endurance_time_str, remaining_time_str, f'{step} / 4', self.plot_base_path, self.farm_base_path]
+        # 任务名，pid，占用的cpu核心， 百分比, iter, 开始时间，持续时间，未来用时，目前阶段，plot缓存路径，输出路径
+        info_list = [self.name, str(self.pid), ', '.join([str(i) for i in self.cpu_list]), percent, str(iter), f'{step} / 4', time_format(self.start_time), endurance_time_str, remaining_time_str,self.plot_base_path, self.farm_base_path]
         return info_list
 
     def do_work(self, config):
-        assert os.path.exists(self.plot_base_path) and os.path.exists(self.farm_base_path), print(f'plot路径{self.plot_base_path} 或 输出路径 {self.farm_base_path} 不存在!')
+        
+        # assert os.path.exists(self.plot_base_path) and os.path.exists(self.farm_base_path), print(f'plot路径{self.plot_base_path} 或 输出路径 {self.farm_base_path} 不存在!')
         self.start_time = time.time()
-        args = []
+        log = open(self.log_file, 'w')
+        args = [self.config.chia_exec, 'plots', 'create', '-k', str(self.k), '-n', '1', '-r', str(self.thread_number), '-u', str(self.bucket), '-b', str(int(self.memory_occupy)), '-t', self.plot_base_path, '-d', self.farm_base_path]
+        print(args)
         process = subprocess.Popen(
-        args=args,
-        stdout=self.log_file,
-        stderr=self.log_file,
-        shell=False,
+            args=args,
+            stdout=log,
+            stderr=log,
+            shell=False,
         )
         self.process = process
         self.pid = process.pid
+        psutil.Process(self.pid).cpu_affinity(self.cpu_list)
         print(f'添加新任务 {self.name}! 添加时间: {time_format(self.start_time)} 缓存位置: {self.plot_base_path}, 输出位置: {self.farm_base_path}, 占用CPU为 {self.cpu_list}, pid: {self.pid}')
         return process
     
     def finish_work(self, ssd_man, cpu_man):
-        time.sleep(3)
+        time.sleep(1)
+        print(f'调用任务{self.name} finish! {self.plot_base_path}')
         self.finish = True 
         assert len(os.listdir(self.plot_base_path)) == 0, print(f'{self.plot_base_path} 文件夹非空! 完成任务 {self.name} 失败!')
-        assert subprocess.Popen().poll(self.process) is not None, print(f'{self.name} 任务未完成')
+        assert subprocess.Popen.poll(self.process) is not None, print(f'{self.name} 任务未完成')
         shutil.rmtree(self.plot_base_path)
         ssd_man.set_ssd_free(self.name)
         if self.cpu_list:
@@ -421,10 +453,13 @@ class MemManager(object):
         return self.used_memory
 
     def get_mem_percent(self):
-        self.percent = self.mem.percent
+        self.percent = self.get_used_memory() / self.max_memory
         return self.percent
     
     def get_max_alloc_num(self, plot_memory_size=4000.0):
+        plot_memory_size /= 1024
+        # print(self.free_memory, plot_memory_size)
+        # print(int(self.free_memory / plot_memory_size))
         return int(self.free_memory / plot_memory_size)
 
     def view_info(self):
@@ -475,14 +510,17 @@ class Manager(object):
         # 可用跑第一阶段的剩余任务数量
         step_1_free_num = could_alloc_num + temp_n
         
-        max_free_num = min(cpu_free_num, mem_free_num, ssd_free_num, hdd_free_num, step_1_free_num)
+        max_free_num = int(min(cpu_free_num, mem_free_num, ssd_free_num, hdd_free_num, step_1_free_num))
+        # print(cpu_free_num, mem_free_num, ssd_free_num, hdd_free_num, step_1_free_num)
         return max_free_num
 
     def upgrade_worker_queue(self):
         all_working = False
+        if not self.worker_queue:
+            all_working = True
         while not all_working:
             for now_worker in self.worker_queue:
-                if subprocess.Popen(now_worker.process) is not None:
+                if subprocess.Popen.poll(now_worker.process) is not None:
                     print(f'{now_worker.name} 任务完成！ 清除占用')
                     now_worker.finish_work(self._ssd, self._cpu)
                     self.finish_time_list.append(time.time())
@@ -494,7 +532,7 @@ class Manager(object):
             
             all_working = True
             for now_worker in self.worker_queue:
-                if subprocess.Popen(now_worker.process) is not None:
+                if subprocess.Popen.poll(now_worker.process) is not None:
                     all_working = False
                     break
         
@@ -511,12 +549,16 @@ class Manager(object):
     def new_worker(self, w_id):
         success = False
         worker_name = f'plot_{w_id}'
-        interval_time = self.config.delay_time
+        interval_time = self.config.delay_minute
         farm_path = self._hdd.set_hdd_occupy(worker_name, interval_time)
         if farm_path:
             plot_path = self._ssd.set_ssd_occupy(worker_name)
             if plot_path:
-                self.worker_queue.append(PlotWorker(w_id, self._cpu, self.config, plot_path, farm_path))
+                worker = PlotWorker(w_id, self._cpu, self.config, plot_path, farm_path)
+                # print(w_id, plot_path, farm_path)
+                # print(f'[red]!!!!!!!!!!!!!!!!!!!')
+                worker.do_work(self.config)
+                self.worker_queue.append(worker)
                 success = True
             else:
                 print(f'SSD磁盘空间不足 无法P更多文件 稍后再试') 
@@ -526,7 +568,11 @@ class Manager(object):
         return success
 
     def view_info(self):
-        pass
+        self._ssd.view_info()
+        self._hdd.view_info()
+        self._cpu.view_info()
+        self._mem.view_info()
+        
 
 
 
