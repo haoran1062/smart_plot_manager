@@ -5,3 +5,4 @@ outputs/*
 run_test.py
 plot_cfg.py
 AI_chia_ploter.code-workspace
+.DS_Store
