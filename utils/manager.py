@@ -1,7 +1,8 @@
 from utils.hard_core import *
 from rich import print
-from rich.console import Console
+from rich.align import Align
 
+from rich.console import Console
 from rich.table import Column, Table
 import os, psutil, subprocess, shutil, time, datetime
 console = Console()
@@ -205,14 +206,17 @@ class SSDManager(object):
         return n
     
     def get_total_ssd_status(self):
-        used, total = 0, 0
+        used, free, total = 0, 0, 0
         for path, disk in self.disk_dict.items():
             used += disk.get_used_size()
+            free += disk.get_free_size()
             total += disk.get_total_size()
-        return used, total
+        return used, free, total
 
-    def view_info(self):
+    def view_info_table(self):
         table = Table(show_header=True, header_style="bold magenta")
+        table_centered = Align.center(table)
+        table.title = "SSD情况概览"
         table.add_column("磁盘", style="dim", width=12)
         table.add_column("挂载点")
         table.add_column("磁盘类型", justify="right")
@@ -220,8 +224,8 @@ class SSDManager(object):
         table.add_column("已用", justify="right")
         table.add_column("可用", justify="right")
         table.add_column("占用率", justify="right")
-        table.add_column("计划已占用P盘个数", justify="right")
-        table.add_column("剩余可P K32个数", justify="right")
+        table.add_column("已占P盘个数", justify="right")
+        table.add_column("剩余可P K32", justify="right")
         for path, disk in self.disk_dict.items():
             save_num = str(disk.get_max_plot_size())
             disk.get_used_size()
@@ -232,7 +236,8 @@ class SSDManager(object):
             f'{"%.2fTB"%(disk.used_disk/1024) if disk.used_disk > 1024 else "%.2fGB"%(disk.used_disk)}',
             f'{"%.2fTB"%(disk.free_disk/1024) if disk.free_disk > 1024 else "%.2fGB"%(disk.free_disk)}',
             "%.2f%%"%(disk.percent_disk), str(len(disk.occupy_list)), save_num)
-        console.print(table)
+        # console.print(table)
+        return table
 
 class HDDManager(object):
     # 机械硬盘管理者 获取机械硬盘列表，每块HDD的大小，占用率，以及管理P盘时输出路径调度
@@ -271,7 +276,8 @@ class HDDManager(object):
                         out_path = path
         if not out_path:
             if max_internal_time < delay_minute:
-                print(f'[red]当前机械盘执行任务距离上次任务时间间隔 {max_internal_time}分钟 小于 {delay_minute//60}分钟! 无法继续申请，等待{delay_minute//60 - max_internal_time}分钟后再尝试')
+                pass
+                # print(f'[red]当前机械盘执行任务距离上次任务时间间隔 {max_internal_time}分钟 小于 {delay_minute//60}分钟! 无法继续申请，等待{delay_minute//60 - max_internal_time}分钟后再尝试')
             else:
                 print(u'[red]P盘空间不足！')
         else:
@@ -291,14 +297,17 @@ class HDDManager(object):
         return n
 
     def get_total_hdd_status(self):
-        used, total = 0, 0
+        used, free, total = 0, 0, 0
         for path, disk in self.disk_dict.items():
             used += disk.get_used_size()
+            free += disk.get_free_size()
             total += disk.get_total_size()
-        return used, total
+        return used, free, total
 
-    def view_info(self):
+    def view_info_table(self):
         table = Table(show_header=True, header_style="bold magenta")
+        table_centered = Align.center(table)
+        table.title = "HDD情况概览"
         table.add_column("磁盘", style="dim", width=12)
         table.add_column("挂载点")
         table.add_column("磁盘类型", justify="right")
@@ -306,8 +315,8 @@ class HDDManager(object):
         table.add_column("已用", justify="right")
         table.add_column("可用", justify="right")
         table.add_column("占用率", justify="right")
-        table.add_column("计划已占用K32文件个数", justify="right")
-        table.add_column("剩余可存K32文件个数", justify="right")
+        table.add_column("已占K32数", justify="right")
+        table.add_column("可存K32数", justify="right")
         for path, disk in self.disk_dict.items():
             save_num = str(disk.get_max_farm_size())
             disk.get_used_size()
@@ -317,7 +326,8 @@ class HDDManager(object):
             f'{"%.2fTB"%(disk.used_disk/1024) if disk.used_disk > 1024 else "%.2fGB"%(disk.used_disk)}',
             f'{"%.2fTB"%(disk.free_disk/1024) if disk.free_disk > 1024 else "%.2fGB"%(disk.free_disk)}',
             "%.2f%%"%(disk.percent_disk), str(len(disk.occupy_list)), save_num)
-        console.print(table)
+        # console.print(table)
+        return table
 
 class LogProcesser(object):
     def __init__(self, log_file):
@@ -408,7 +418,7 @@ class PlotWorker(object):
         self.start_time = time.time()
         log = open(self.log_file, 'w')
         args = [self.config.chia_exec, 'plots', 'create', '-k', str(self.k), '-n', '1', '-r', str(self.thread_number), '-u', str(self.bucket), '-b', str(int(self.memory_occupy)), '-t', self.plot_base_path, '-d', self.farm_base_path]
-        print(args)
+        # print(args)
         process = subprocess.Popen(
             args=args,
             stdout=log,
@@ -537,11 +547,11 @@ class Manager(object):
                     break
         
         n = self.get_max_allocable_worker_num()
-        print(f'当前资源至少可以再申请{n}个任务！')
+        # print(f'当前资源至少可以再申请{n}个任务！')
         for i in range(n):
             success = self.new_worker(self.now_worker_id)
             if not success:
-                print(f'申请任务：{self.now_worker_id} 失败!')
+                # print(f'申请任务：{self.now_worker_id} 失败!')
                 break
             self.now_worker_id += 1
 
@@ -563,7 +573,8 @@ class Manager(object):
             else:
                 print(f'SSD磁盘空间不足 无法P更多文件 稍后再试') 
         else:
-            print(f'HDD磁盘空间不足 无法储存更多plot文件 稍后再试')
+            # print(f'HDD磁盘空间不足 无法储存更多plot文件 稍后再试')
+            pass
         
         return success
 

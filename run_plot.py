@@ -18,8 +18,8 @@ console = Console()
 if __name__ == '__main__':
     cfg = Config()
     manager = Manager(cfg)
-    manager.view_info()
-    sleep(1)
+    # manager.view_info()
+    # sleep(1)
     # manager.upgrade_worker_queue()
     # exit()
 
