@@ -31,11 +31,11 @@ class DISK(object):
         
         
     def get_free_size(self):
-        self.free_disk = round((float(self.disk_info.free) / 1024 / 1024 / 1024), 2)
+        self.free_disk = round((float(psutil.disk_usage(self.mountpoint).free) / 1024 / 1024 / 1024), 2)
         return self.free_disk
     
     def get_used_size(self):
-        self.used_disk = round((float(self.disk_info.used) / 1024 / 1024 / 1024), 2)
+        self.used_disk = round((float(psutil.disk_usage(self.mountpoint).used) / 1024 / 1024 / 1024), 2)
         return self.used_disk
     
     def get_total_size(self):
@@ -445,11 +445,11 @@ class MemManager(object):
         self.percent = self.get_mem_percent()
     
     def get_free_memory(self):
-        self.free_memory = self.mem.available / 1024 / 1024 / 1024
+        self.free_memory = psutil.virtual_memory().available / 1024 / 1024 / 1024
         return self.free_memory
 
     def get_used_memory(self):
-        self.used_memory = self.mem.used / 1024 / 1024 / 1024
+        self.used_memory = self.max_memory - psutil.virtual_memory().available / 1024 / 1024 / 1024
         return self.used_memory
 
     def get_mem_percent(self):

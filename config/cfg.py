@@ -2,7 +2,7 @@ class Config(object):
     def __init__(self):
         self.chia_exec = '/usr/lib/chia-blockchain/resources/app.asar.unpacked/daemon/chia'
         self.thread_number = 4
-        self.max_thread_num = 6
+        # self.max_thread_num = 6
         self.delay_minute = 15
         self.k = 32
         self.bucket = 128

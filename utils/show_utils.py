@@ -37,6 +37,33 @@ class Clock:
 
 layout["header"].update(Clock())
 
+# def get_remaining_status(manager):
+#     r_cpu_n = len(manager._cpu.free_cpu_list)
+#     cpu_pn = r_cpu_n / manager.config.thread_number
+#     ssd_r_t = manager._ssd.get_all_max_plot_number()
+#     running_n = manager.get_running_worker_num()
+#     l = [
+#         [str(n24), str(remaining_n), '--:--:--' if n24 == 0 else f'{remaining_n / n24 :.2f} 天', f'{running_n} 个' ]
+#     ]
+#     return l
+
+# def create_remaining_status_table(manager):
+#     table = Table(show_footer=False)
+#     table_centered = Align.center(table)
+#     table.title = "剩余最大申请资源概览"
+#     table.add_column("剩余可用CPU数量/最大再开任务数量", no_wrap=True)
+#     table.add_column("SSD剩余可储存大小/最大再开任务数量", no_wrap=True)
+#     table.add_column("磁盘剩余可储存大小/最大再开任务数量", no_wrap=True)
+#     table.add_column("内存剩余可用大小/最大再开任务数量", no_wrap=True)
+
+#     table.columns[0].style = "magenta"
+#     table.show_footer = True
+#     table.footer_style = "bright_red"
+#     rows = get_plot_status(manager)
+#     for row in rows:
+#         table.add_row(*row)
+#     return table
+
 def get_plot_status(manager):
     n24 = manager.last_24h_finished_plot_number()
     remaining_n = manager._hdd.get_all_max_plot_number()
@@ -64,13 +91,18 @@ def create_plot_status_table(manager):
     return table
 
 def get_hardware_input(manager):
-    ssd_used, ssd_total = manager._ssd.get_total_ssd_status()
-    hdd_used, hdd_total = manager._hdd.get_total_hdd_status()
+    ssd_used, ssd_free, ssd_total = manager._ssd.get_total_ssd_status()
+    hdd_used, hdd_free, hdd_total = manager._hdd.get_total_hdd_status()
+    mem_used, mem_free, mem_total = manager._mem.get_used_memory(), manager._mem.get_free_memory(), manager._mem.max_memory
+    mem_n = mem_free // (manager.config.memory / 1024)
+    cpu_r_l = manager._cpu.free_cpu_list
+    cpu_r_n = len(cpu_r_l)
+    cpu_p_n = cpu_r_n / manager.config.thread_number
     l = [
-        ['CPU', f'{manager._cpu.used_num}', f'{manager._cpu.thread_num}', f'{ 100 * float(manager._cpu.used_num) / manager._cpu.thread_num :.2f}%'],
-        ['内存', f'{manager._mem.get_used_memory() :.2f}G', f'{manager._mem.max_memory :.2f}G', f'{100 * manager._mem.get_mem_percent() :.2f}%'],
-        ['SSD', f'{ssd_used / 1024 :.2f}T', f'{ssd_total / 1024 :.2f}T', f'{ 100 * float(ssd_used) / ssd_total :.2f}%'],
-        ['HDD', f'{hdd_used / 1024 :.2f}T', f'{hdd_total / 1024 :.2f}T', f'{ 100 * float(hdd_used) / hdd_total :.2f}%']
+        ['CPU', f'{manager._cpu.used_num}', f'{cpu_r_n}({cpu_r_l})', f'{manager._cpu.thread_num}', f'{ 100 * float(manager._cpu.used_num) / manager._cpu.thread_num :.2f}%', f'{cpu_p_n}'],
+        ['内存', f'{mem_used :.2f}G', f'{mem_free :.2f}G', f'{mem_total :.2f}G', f'{100 * manager._mem.get_mem_percent() :.2f}%', f'{mem_n}'],
+        ['SSD', f'{ssd_used / 1024 :.2f}T', f'{ssd_free / 1024 :.2f}T', f'{ssd_total / 1024 :.2f}T', f'{ 100 * float(ssd_used) / ssd_total :.2f}%', f'{manager._ssd.get_all_max_plot_number()}'],
+        ['HDD', f'{hdd_used / 1024 :.2f}T', f'{hdd_free / 1024 :.2f}T', f'{hdd_total / 1024 :.2f}T', f'{ 100 * float(hdd_used) / hdd_total :.2f}%', f'{manager._hdd.get_all_max_farm_number()}']
     ]
     return l
 
@@ -80,8 +112,10 @@ def create_hardware_table(manager):
     table.title = "硬件使用情况"
     table.add_column("硬件类型", no_wrap=True)
     table.add_column("使用量", no_wrap=True)
+    table.add_column("剩余量", no_wrap=True)
     table.add_column("总量", no_wrap=True)
     table.add_column("使用率", no_wrap=True)
+    table.add_column("最大可再申请任务数", no_wrap=True)
 
     table.columns[0].style = "magenta"
     table.show_footer = True
