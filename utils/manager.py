@@ -184,7 +184,7 @@ class SSDManager(object):
         for path, disk in self.disk_dict.items():
             for l in disk.occupy_list:
                 if l[0] == worker_name:
-                    disk.occupy_list.pop(l)
+                    disk.occupy_list.remove(l)
                     print(f'{worker_name} 完成! 缓存队列占用清除 {path} ')
                     return True
         print(f'未找到 {worker_name} 占用的缓存队列 ')
@@ -495,7 +495,7 @@ class Manager(object):
         if not self.finish_time_list:
             return 0
         now = time.time()
-        one_day_ago = now - datetime.timedelta(days=1)
+        one_day_ago = now - 86400
         for i in range(len(self.finish_time_list)):
             if self.finish_time_list[i] > one_day_ago:
                 return len(self.finish_time_list[i:])
@@ -521,7 +521,7 @@ class Manager(object):
         step_1_free_num = could_alloc_num + temp_n
         
         max_free_num = int(min(cpu_free_num, mem_free_num, ssd_free_num, hdd_free_num, step_1_free_num))
-        # print(cpu_free_num, mem_free_num, ssd_free_num, hdd_free_num, step_1_free_num)
+        max_free_num = max(0, max_free_num)
         return max_free_num
 
     def upgrade_worker_queue(self):
@@ -535,7 +535,7 @@ class Manager(object):
                     now_worker.finish_work(self._ssd, self._cpu)
                     self.finish_time_list.append(time.time())
                     # self._ssd.set_ssd_free(now_worker.name)
-                    self.worker_queue.pop(now_worker)
+                    self.worker_queue.remove(now_worker)
                     break
                 elif now_worker.get_status()[1] == 4 and now_worker.cpu_list:
                     self._cpu.set_cpu_free(now_worker)
